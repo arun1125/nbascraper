@@ -15,7 +15,11 @@ class NBAScraper:
         self.homeurl = 'https://www.basketball-reference.com'
         self.players_df = self.load_players()
 
-    def extract_page_source(self):
+    def openNwindows(self, N):
+        open_tab_script = "window.open('');"
+        self.driver.execute_script(open_tab_script*N)
+
+    def page_source(self):
         return self.driver.page_source
 
     def load_players(self):
@@ -143,7 +147,10 @@ class NBAScraper:
 
         player_df.to_csv('all_players.csv', index = False)
 
+        self.driver.quit()
         return player_df
+
+    
 
 
 class PlayerScraper(NBAScraper):
@@ -151,8 +158,10 @@ class PlayerScraper(NBAScraper):
     def __init__(self):
         NBAScraper.__init__(self)
         self.searchurl = 'https://www.basketball-reference.com/players/'
+        self.table_ids = ['per_game', 'totals', 'per_minute', 'per_poss', 'advanced', 'adj-shooting', 
+        'shooting', 'pbp', 'playoffs_per_game', 'playoffs_totals', 'playoffs_per_minute',
+        'playoffs_per_poss', 'playoffs_advanced', 'playoffs_shooting', 'playoffs_pbp', 'all_star']
 
-    
     def player_search(self, player):
         self.driver.get(self.searchurl)
 
@@ -219,7 +228,7 @@ class PlayerScraper(NBAScraper):
         return df
 
 
-    def extract_all_tables_for_player(self, page_source):
+    def Extract_All_Tables_For_Players(self, page_source):
         soup = BeautifulSoup(page_source, features="html.parser")
 
         all_tbls = soup.find_all(class_ = ["row_summable sortable stats_table now_sortable",
@@ -233,6 +242,176 @@ class PlayerScraper(NBAScraper):
 
         return dfs
 
+    @staticmethod
+    def get_table(vals, tbl_id):
+        try:
+            return vals[tbl_id]
+        except:
+            pass
+
+    @staticmethod
+    def process_adj_shooting(df):
+        '''
+        column names were player specific for adj shooting so changed
+        '''
+        total_cols = ['Season',
+                        'Age',
+                        'Team',
+                        'Lg',
+                        'Pos',
+                        'G',
+                        'MP',
+                        '\xa0',
+                        'FG Player Shooting %',
+                        '2P Player Shooting %',
+                        '3P Player Shooting %',
+                        'eFG Player Shooting %',
+                        'FT Player Shooting %',
+                        'TS Player Shooting %',
+                        'FTr Player Shooting %',
+                        '3PAr Player Shooting %',
+                        '\xa0',
+                        'FG_League Shooting %',
+                        '2P_League Shooting %',
+                        '3P_League Shooting %',
+                        'eFG_League Shooting %',
+                        'FT_League Shooting %',
+                        'TS_League Shooting %',
+                        'FTr_League Shooting %',
+                        '3PAr_League Shooting %',
+                        '\xa0',
+                        'FG+_League-Adjusted',
+                        '2P+_League-Adjusted',
+                        '3P+_League-Adjusted',
+                        'eFG+_League-Adjusted',
+                        'FT+_League-Adjusted',
+                        'TS+_League-Adjusted',
+                        'FTr+_League-Adjusted',
+                        '3PAr+_League-Adjusted',
+                        '\xa0',
+                        'FG Add',
+                        'TS Add',
+                        'Player_link']
+        
+        if df is not None:
+            tag = (re.findall("([^/]+$)",df['Player_link'][0])[0][:-9]).capitalize()
+            new_cols = [re.sub(r'_(.*) ', ' Player Shooting ', col) if tag in col else col for col in df.columns]
+            df.columns = new_cols
+
+            if len(new_cols) != 38:
+                new_df = pd.DataFrame(columns = total_cols)
+                for col in new_cols:
+                    new_df[col] = df[col]
+                return new_df
+            else:
+                return df
+        else:
+            pass
+
+    @staticmethod
+    def process_adv(df):
+        ''' snice 3pt line wasnt a thing back in the day'''
+        total_cols = ['Season',
+                    'Age',
+                    'Tm',
+                    'Lg',
+                    'Pos',
+                    'G',
+                    'MP',
+                    'PER',
+                    'TS%',
+                    '3PAr',
+                    'FTr',
+                    'ORB%',
+                    'DRB%',
+                    'TRB%',
+                    'AST%',
+                    'STL%',
+                    'BLK%',
+                    'TOV%',
+                    'USG%',
+                    '\xa0',
+                    'OWS',
+                    'DWS',
+                    'WS',
+                    'WS/48',
+                    '\xa0',
+                    'OBPM',
+                    'DBPM',
+                    'BPM',
+                    'VORP',
+                    'Player_link']
+        if df is not None:
+            if len(df.columns) != 30:
+                new_df = pd.DataFrame(columns = total_cols)
+                for col in df.columns:
+                    new_df[col] = df[col]
+
+                return new_df
+
+        return df
+
+
+
+
+
+    def BatchGetPlayers(self, year):
+        '''returns a dict of dataframes
+        one for each stat 
+        each of which consisting of all the records available for players
+        drafted since the year you inputted 
+        it takes some time!
+        '''
+
+        # player_df_filtered = self.player_df[self.player_df['From'] > year]
+        player_df_filtered = self.players_df.iloc[:5]
+        links = player_df_filtered['Player_links'].values
+        links_with_page_source = dict.fromkeys(links)
+
+        for link in links:
+            self.driver.get(link)
+            time.sleep(1)
+            links_with_page_source[link] = self.page_source()
+
+
+        player_tables = []
+
+        for i in range(len(links)):
+            player_tables.append(self.Extract_All_Tables_For_Players(
+                links_with_page_source[links[i]]
+            ))
+
+        for i in range(len(links)):
+            if player_tables[i] != {}:
+                for id_ in self.table_ids:
+                    if id_ in player_tables[i]:
+                        player_tables[i][id_]['Player_link'] = links[i]
+
+        res_dict = dict.fromkeys(self.table_ids)
+
+        for key in self.table_ids:
+
+            if key == 'adj-shooting':
+                dfs = [self.process_adj_shooting(self.get_table(player_tables[i], tbl_id = key))\
+                    for i in range(len(player_tables))]
+
+            elif 'advanced' in key:
+                dfs = [self.process_adv(self.get_table(player_tables[i], tbl_id = key))\
+                    for i in range(len(player_tables))] 
+
+            else:
+                dfs = [self.get_table(player_tables[i], tbl_id = key)\
+                    for i in range(len(player_tables))]
+
+
+            res_dict[key] = pd.concat(dfs)
+
+            
+        return res_dict
+
+        
+
+    
 
 
 
