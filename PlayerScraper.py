@@ -14,7 +14,7 @@ class NBAScraper:
         self.driver = webdriver.Chrome("/Users/arun/Projects/nbascraper/chromedriver")
         self.homeurl = 'https://www.basketball-reference.com'
         self.players_df = self.load_players()
-
+        
     def openNwindows(self, N):
         open_tab_script = "window.open('');"
         self.driver.execute_script(open_tab_script*N)
@@ -54,7 +54,84 @@ class NBAScraper:
     def _mapgettext(row, gettext = _gettext.__func__):
         return list(map(gettext, row))
 
-    
+    def get_columns(self,table_soup):
+        suffixs = list(map(
+            self._get_dataoverheader,
+            table_soup.find("thead").find_all('th',
+            ["poptip sort_default_asc center", 
+            "poptip center",
+            "poptip right"]
+            )
+        ))
+
+        columns = list(map(self._gettext, table_soup.find("thead").find_all('th',
+            ["poptip sort_default_asc center", 
+            "poptip center",
+            "poptip right"])))
+
+        columnsWsuffixs = [f'{columns[i]}' if (suffixs[i] == None) or (suffixs[i] == '\xa0') else f'{columns[i]}_{suffixs[i]}' for i in range(len(columns)) ]
+
+        return columnsWsuffixs
+
+    def get_index(self, table_soup, team = False):
+        '''team paramter exists cause the fucking index if a player has 2 jerseys
+        is 2-28 so cant be an int'''
+
+        index_ = list(map(self._gettext,
+        table_soup.find("tbody").find_all("th")
+        )) 
+        if team:
+            return index_
+        else:
+            try:
+                int(index_[0])
+                index = list()
+                for i in index_:
+                    try:
+                        index.append(int(i))
+                    except:
+                        pass
+            except:
+                index = index_
+        return index
+
+    def get_table_data(self,table_soup):
+        tbl_cells = list(map(self._get_tds,
+        table_soup.find("tbody").find_all("tr")
+        ))
+
+        table_data = list(map(self._mapgettext, tbl_cells))
+        return table_data
+
+
+    def _extract_table(self, html, team = False):
+        '''
+        function to extract table from html
+        some tables have fucking multi level columns so save those as
+        suffixes to their respective column name
+        '''
+        columnsWsuffixs = self.get_columns(html)
+
+        index = self.get_index(html, team)
+
+        table_data = self.get_table_data(html)
+
+        df = pd.DataFrame(table_data).dropna(how='all')
+        
+        if (df.shape[1] == len(columnsWsuffixs)) or (df.shape[1] == len(columnsWsuffixs)):
+            try:
+                df.columns = columnsWsuffixs[1:]
+            except:
+                df.columns = columnsWsuffixs
+
+            df.index = index
+
+            return df
+        else:
+            print('table_mismatch')
+            return None 
+
+
     def _extract_player_table(self, html):
         soup = BeautifulSoup(html, features="html.parser")
 
@@ -108,9 +185,6 @@ class NBAScraper:
             pass
 
         return df
-
-
-
 
     def Extract_All_Players(self):
         '''
@@ -175,66 +249,15 @@ class PlayerScraper(NBAScraper):
         link.click()
         time.sleep(1)
 
-    
-
-    
-    def _extract_table(self, html):
-        '''
-        function to extract table from html
-        some tables have fucking multi level columns so save those as
-        suffixes to their respective column name
-        '''
-        suffixs = list(map(
-            self._get_dataoverheader,
-            html.find("thead").find_all('th',
-            ["poptip sort_default_asc center", "poptip center"]
-            )
-        ))
-
-        columns = list(map(
-            self._gettext,
-            html.find("thead").find_all('th',
-            ["poptip sort_default_asc center", 
-            "poptip center"])
-        ))
-
-        columnsWsuffixs = [f'{columns[i]}' if (suffixs[i] == None) or (suffixs[i] == '\xa0') else f'{columns[i]}_{suffixs[i]}' for i in range(len(columns)) ]
-
-        seasons = list(map(self._gettext,
-        html.find("tbody").find_all("th")
-        ))
-    
-        tbl_cells = list(map(self._get_tds,
-        html.find("tbody").find_all("tr")
-        ))
-
-        table_data = list(map(self._mapgettext, tbl_cells))
-
-        elems_to_delete = []
-        for i in range(len(table_data)):
-            if len(table_data[i]) != (len(columns)-1):
-                elems_to_delete.append(i)  
-
-        
-        if elems_to_delete:
-            for elem in sorted(elems_to_delete, reverse = True):
-                del table_data[elem]
 
 
-        df = pd.DataFrame(data = table_data, 
-             index = seasons).reset_index().replace('', np.nan)
-
-        df.columns = columnsWsuffixs
-        return df
-
-
-    def Extract_All_Tables_For_Players(self, page_source):
+    def Extract_All_Tables(self, page_source):
         soup = BeautifulSoup(page_source, features="html.parser")
 
         all_tbls = soup.find_all(class_ = ["row_summable sortable stats_table now_sortable",
         "row_summable sortable stats_table now_sortable sticky_table re1 le1"])
 
-        tables_to_scrape = dict.fromkeys([tbl.attrs['id'] for tbl in all_tbls])
+        # tables_to_scrape = dict.fromkeys([tbl.attrs['id'] for tbl in all_tbls])
 
         all_data = [self._extract_table(all_tbls[i]) for i in range(len(all_tbls))]
 
@@ -352,9 +375,6 @@ class PlayerScraper(NBAScraper):
         return df
 
 
-
-
-
     def BatchGetPlayers(self, year):
         '''returns a dict of dataframes
         one for each stat 
@@ -377,7 +397,7 @@ class PlayerScraper(NBAScraper):
         player_tables = []
 
         for i in range(len(links)):
-            player_tables.append(self.Extract_All_Tables_For_Players(
+            player_tables.append(self.Extract_All_Tables(
                 links_with_page_source[links[i]]
             ))
 
@@ -410,15 +430,167 @@ class PlayerScraper(NBAScraper):
         return res_dict
 
         
+    @staticmethod
+    def get_pgl_basic(logs):
+        try:
+            return logs['pgl_basic']
+        except:
+            pass
 
+
+    @staticmethod
+    def get_playoffs_basic(logs):
+        try:
+            return logs['pgl_basic_playoffs']
+        except:
+            pass
+
+    @staticmethod
+    def get_adv_pgl_basic(logs):
+        try:
+            return logs['pgl_advanced']
+        except:
+            pass
+
+    @staticmethod
+    def get_adv_playoffs_basic(logs):
+        try:
+            return logs['pgl_advanced_playoffs']
+        except:
+            pass
+
+    @staticmethod
+    def process_game_logs(df):
+        gl = df.drop(columns = [col for col in df.columns if '_' in col ])
+        gl_cleaned = gl.replace('Inactive', np.nan).dropna(subset = ['MP'])
+
+        new_cols = ['G', 'Date', 'Age', 'Tm', ' ', 'Opp', 'Res', 'GS', 'MP', 'FG', 'FGA',
+       'FG%', '3P', '3PA', '3P%', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TRB',
+       'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS', 'GmSc', '+/-', 'TS%', 'eFG%',
+       'ORB%', 'DRB%', 'TRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', 'ORtg',
+       'DRtg', 'BPM']
+
+        gl_cleaned.columns = new_cols
+        gl_cleaned = gl_cleaned.drop(columns = ' ')
+
+        schema =  {'G': 'float64',
+                    'Date': 'datetime64',
+                    'Age': 'string',
+                    'Tm': 'string',
+                    'Opp': 'string',
+                    'Res': 'string',
+                    'GS': 'float64',
+                    'MP': 'string',
+                    'FG': 'float64',
+                    'FGA': 'float64',
+                    'FG%': 'float64',
+                    '3P': 'float64',
+                    '3PA': 'float64',
+                    '3P%': 'float64',
+                    'FT': 'float64',
+                    'FTA': 'float64',
+                    'FT%': 'float64',
+                    'ORB': 'float64',
+                    'DRB': 'float64',
+                    'TRB': 'float64',
+                    'AST': 'float64',
+                    'STL': 'float64',
+                    'BLK': 'float64',
+                    'TOV': 'float64',
+                    'PF': 'float64',
+                    'PTS': 'float64',
+                    'GmSc': 'float64',
+                    '+/-': 'float64',
+                    'TS%': 'float64',
+                    'eFG%': 'float64',
+                    'ORB%': 'float64',
+                    'DRB%': 'float64',
+                    'TRB%': 'float64',
+                    'AST%': 'float64',
+                    'STL%': 'float64',
+                    'BLK%': 'float64',
+                    'TOV%': 'float64',
+                    'USG%': 'float64',
+                    'ORtg': 'float64',
+                    'DRtg': 'float64',
+                    'BPM': 'float64'}
+
+        full_game_logs = gl_cleaned.replace('', np.nan).astype(schema)
+
+        return full_game_logs
+
+    def Extract_All_Game_logs_for_player(self, player_name):
+        player = self.players_df[self.players_df['Player'] == player_name]
+
+        player_url = player['Player_links'].values[0][:-5]
+        years = list(range(player['From'].iloc[0], player['To'].iloc[0]+1))
+
+        game_log_urls = [f'{player_url}/gamelog/{year}' for year in years]
+
+        adv_game_log_urls = [f'{player_url}/gamelog-advanced/{year}' for year in years]
+
+        game_log_pg_srcs = []
+        for i in range(len(game_log_urls)):
+            self.driver.get(game_log_urls[i])
+            time.sleep(0.5)
+            game_log_pg_srcs.append(self.driver.page_source)
+
+        adv_game_log_pg_srcs = []
+        for i in range(len(adv_game_log_urls)):
+            self.driver.get(adv_game_log_urls[i])
+            time.sleep(0.5)
+            adv_game_log_pg_srcs.append(self.driver.page_source)
+        
+        game_log_tbls = []
+        for i in range(len(game_log_pg_srcs)):
+            game_log_tbls.append(self.Extract_All_Tables(game_log_pg_srcs[i]))
+
+        adv_game_log_tbls = []
+        for i in range(len(adv_game_log_pg_srcs)):
+            adv_game_log_tbls.append(self.Extract_All_Tables(adv_game_log_pg_srcs[i]))
+        
+        basic_game_logs = pd.concat(list(map(self.get_pgl_basic, game_log_tbls)))
+        basic_playoff_game_logs = pd.concat(list(map(self.get_playoffs_basic, game_log_tbls)))
+        adv_game_logs = pd.concat(list(map(self.get_adv_pgl_basic, adv_game_log_tbls)))
+        adv_playoff_game_logs = pd.concat(list(map(self.get_adv_playoffs_basic, adv_game_log_tbls)))
+
+
+        bgl = pd.concat([basic_game_logs,
+                 basic_playoff_game_logs]).sort_values(by = 'Date')
+
+        agl = pd.concat([adv_game_logs,
+                 adv_playoff_game_logs]).sort_values(by = 'Date')
     
+        gl = pd.merge(bgl, 
+             agl,
+             on = 'Date',
+             suffixes=('','_'),
+             how = 'inner')
+
+        return gl
 
 
 
+class TeamScraper(NBAScraper):
 
-    
+    def __init__(self):
+        NBAScraper.__init__(self)
+        self.team_abbrvs = ['ATL','BKN','BOS','CHA','CHI','CLE','DAL','DEN','DET','GSW','HOU','IND','LAC','LAL','MEM','MIA','MIL',
+        'MIN','NOP','NYK','OKC','ORL','PHI','PHO','POR','SAC','SAS','TOR','UTA','WAS']
+        self.team_url = team_url = "https://www.basketball-reference.com/teams/"
 
+    def GetTeamRoster(self, team_abbrv, season_end):
+
+        self.driver.get(f"{self.team_url}{team_abbrv}/{season_end}.html")
+        pg_src = self.driver.page_source
+
+        soup = BeautifulSoup(pg_src, features='html.parser')
+        roster_soup = soup.find("table", attrs={"id":"roster"})
+
+        df = self._extract_table(roster_soup, team = True)
+
+        return df
 
 
 if __name__ == "__main__":
-    player_scraper = PlayerScraper()
+    pass
