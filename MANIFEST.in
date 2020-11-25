@@ -1,1 +1,2 @@
 include massnbascraper/Data/all_players.csv
+include massnbascraper/chromedriver
