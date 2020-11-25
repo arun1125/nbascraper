@@ -1,22 +1,34 @@
-import setuptools
+import pathlib
+from setuptools import setup
 
-with open("README.md", "r") as fh:
-    long_description = fh.read()
+# The directory containing this file
+HERE = pathlib.Path(__file__).parent
 
-setuptools.setup(
-    name="Arun", # Replace with your own username
-    version="0.0.1",
-    author="Arunachalam Thirunavukkarasu",
-    author_email="arunthiru77@gmail.com",
-    description="A Bulk NBA scraper to collect data",
-    long_description=long_description,
+# The text of the README file
+README = (HERE / "README.md").read_text()
+
+# This call to setup() does all the work
+setup(
+    name="massnbascraper",
+    version="1.0.0",
+    description="Scrape basketball reference ",
+    long_description=README,
     long_description_content_type="text/markdown",
-    url="https://github.com/arun1125/nbascraper",
-    packages=setuptools.find_packages(),
+    url="https://github.com/realpython/reader",
+    author="Real Python",
+    author_email="office@realpython.com",
+    license="MIT",
     classifiers=[
-        "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
     ],
-    python_requires='>=3.6',
+    packages=["reader"],
+    include_package_data=True,
+    install_requires=["feedparser", "html2text"],
+    entry_points={
+        "console_scripts": [
+            "realpython=reader.__main__:main",
+        ]
+    },
 )
