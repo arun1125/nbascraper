@@ -1,5 +1,4 @@
 # Example Package
 
-This is a simple example package. You can use
-[Github-flavored Markdown](https://guides.github.com/features/mastering-markdown/)
-to write your content.
+This Package is used to scrape basketbal reference to get player data, team data etc.
+ It uses selenium to automate the browser and beautful soup to scrape that bitch

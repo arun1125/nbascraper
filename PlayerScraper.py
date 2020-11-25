@@ -593,4 +593,4 @@ class TeamScraper(NBAScraper):
 
 
 if __name__ == "__main__":
-    pass
+    print('BASKETBALL SCRAPER')

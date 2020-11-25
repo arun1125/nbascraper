@@ -11,24 +11,24 @@ README = (HERE / "README.md").read_text()
 setup(
     name="massnbascraper",
     version="1.0.0",
-    description="Scrape basketball reference ",
+    description="Scrape basketball reference",
     long_description=README,
     long_description_content_type="text/markdown",
-    url="https://github.com/realpython/reader",
-    author="Real Python",
-    author_email="office@realpython.com",
+    url="https://github.com/arun1125/nbascraper",
+    author="Arunachalam Thirunavukkarasu",
+    author_email="arunthiru77@gmail.com",
     license="MIT",
     classifiers=[
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.7",
     ],
-    packages=["reader"],
+    packages=["massnbascraper"],
     include_package_data=True,
-    install_requires=["feedparser", "html2text"],
-    entry_points={
-        "console_scripts": [
-            "realpython=reader.__main__:main",
-        ]
-    },
+    install_requires=["selenium", "pandas", "bs4", "numpy"],
+    # entry_points={
+    #     "console_scripts": [
+    #         "massnascraper=PlayerScraper.__main__:main",
+    #     ]
+    # },
 )
